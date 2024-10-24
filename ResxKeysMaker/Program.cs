@@ -2,45 +2,61 @@
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using OfficeOpenXml; // EPPlus namespace
 
 class Program
 {
     static void Main(string[] args)
     {
-        // Hardcoded input and output file paths
-        string inputFile = @"C:\path\to\your\input.resx";  // Replace with your actual input .resx file path
-        string outputFile = @"C:\path\to\your\output.resx";  // Replace with your actual output .resx file path
+        // Hardcoded Excel file input path and .resx output path
+        string inputExcelFile = @"C:\path\to\your\input.xlsx";  // Replace with actual input Excel file path
+        string outputResxFile = @"C:\path\to\your\output.resx";  // Replace with actual output .resx file path
 
-        // Validate if the input file exists
-        if (!File.Exists(inputFile))
+        // Validate if the input Excel file exists
+        if (!File.Exists(inputExcelFile))
         {
-            Console.WriteLine("Input file not found. Please check the path.");
+            Console.WriteLine("Input Excel file not found. Please check the path.");
             return;
         }
 
-        // Load the .resx file as XML
-        XDocument resxDocument = XDocument.Load(inputFile);
+        // Create a new .resx file as an XDocument
+        XDocument resxDocument = new XDocument(
+            new XDeclaration("1.0", "utf-8", "yes"),
+            new XElement("root")
+        );
 
-        // Iterate over all <data> elements which contain key-value pairs
-        foreach (var dataElement in resxDocument.Descendants("data"))
+        // Read the Excel file
+        using (var package = new ExcelPackage(new FileInfo(inputExcelFile)))
         {
-            // Get the 'name' attribute which is the key
-            var nameAttribute = dataElement.Attribute("name");
-            if (nameAttribute != null)
+            ExcelWorksheet worksheet = package.Workbook.Worksheets[0];  // Read the first sheet
+
+            int rowCount = worksheet.Dimension.Rows;  // Total rows in the sheet
+
+            for (int row = 1; row <= rowCount; row++)  // Loop through each row
             {
-                string originalKey = nameAttribute.Value;
+                string originalKey = worksheet.Cells[row, 1].Text;  // Read the first column (Key)
 
-                // Modify the key: lowercase and replace spaces/special characters with underscores
-                string modifiedKey = Regex.Replace(originalKey.ToLower(), @"[\s\W]+", "_");
+                if (!string.IsNullOrWhiteSpace(originalKey))  // Only process non-empty keys
+                {
+                    // Convert key to lowercase and replace spaces/special characters with underscores
+                    string modifiedKey = Regex.Replace(originalKey.ToLower(), @"[\s\W]+", "_");
 
-                // Update the 'name' attribute with the modified key
-                nameAttribute.Value = modifiedKey;
+                    // Create a new <data> element for the .resx file
+                    XElement dataElement = new XElement("data",
+                        new XAttribute("name", modifiedKey),
+                        new XAttribute(XNamespace.Xml + "space", "preserve"),
+                        new XElement("value", originalKey)
+                    );
+
+                    // Add the <data> element to the root of the .resx file
+                    resxDocument.Root.Add(dataElement);
+                }
             }
         }
 
-        // Save the modified .resx file to the hardcoded output path
-        resxDocument.Save(outputFile);
+        // Save the generated .resx file
+        resxDocument.Save(outputResxFile);
 
-        Console.WriteLine($"File successfully updated and saved as: {outputFile}");
+        Console.WriteLine($"Excel data successfully converted and saved to: {outputResxFile}");
     }
 }
